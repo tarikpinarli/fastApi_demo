@@ -28,8 +28,7 @@ app.add_middleware(
 )
 
 # ---------- Input model ----------
-class InputData(BaseModel):
-    user_id: str
+
 
 
 # ---------- SQLite config ----------
@@ -79,7 +78,6 @@ def generate_recommendation_endpoint(data: InputData):
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
     payload = {
-        "user_id": data.user_id,
         "temp": temp,
         "humidity": humidity,
         "duration": duration,
