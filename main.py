@@ -64,7 +64,7 @@ def read_latest_from_sqlite():
 
 
 @app.post("/generate-recommendation")
-def generate_recommendation_endpoint(data: InputData):
+def generate_recommendation_endpoint():
     """
     1. Read latest recommendation from recommendation.db
     2. Insert {user_id, temp, humidity, duration} into Supabase
