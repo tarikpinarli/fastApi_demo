@@ -7,6 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client, Client
 
+import subprocess
+
+result = subprocess.run(
+    ["python3", "prediction.py"],
+    capture_output=True,
+    text=True
+)
+
 # ---------- Supabase client ----------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
