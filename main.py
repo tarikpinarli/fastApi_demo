@@ -2,18 +2,16 @@
 
 import os
 import sqlite3
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from supabase import create_client, Client
-
 import subprocess
 
-result = subprocess.run(
-    ["python3", "prediction.py"],
-    capture_output=True,
-    text=True
-)
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from supabase import create_client, Client
+
+# ---------- Paths ----------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "recommendation.db")
+PREDICTION_SCRIPT = os.path.join(BASE_DIR, "prediction.py")
 
 # ---------- Supabase client ----------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -35,14 +33,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------- Input model ----------
-
-
-
-# ---------- SQLite config ----------
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "recommendation.db")
-
+# ---------- SQLite helper ----------
 SQL_SELECT_LATEST = """
     SELECT recommended_temp, recommended_hum, recommended_duration
     FROM recommendations
@@ -71,13 +62,39 @@ def read_latest_from_sqlite():
     return recommended_temp, recommended_hum, recommended_duration
 
 
+# ---------- API Endpoint ----------
 @app.post("/generate-recommendation")
 def generate_recommendation_endpoint():
     """
-    1. Read latest recommendation from recommendation.db
-    2. Insert {user_id, temp, humidity, duration} into Supabase
-    3. Return same payload as JSON
+    1. Run prediction.py to generate/update recommendation.db
+    2. Read latest recommendation from recommendation.db
+    3. Insert {temp, humidity, duration} into Supabase
+    4. Return same payload as JSON
     """
+    # 1) Run prediction.py as a subprocess
+    try:
+        result = subprocess.run(
+            ["python3", PREDICTION_SCRIPT],
+            capture_output=True,
+            text=True,
+            check=True,   # raises CalledProcessError if non-zero exit
+        )
+        # Optional debug:
+        print("prediction.py stdout:", result.stdout)
+        if result.stderr:
+            print("prediction.py stderr:", result.stderr)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"prediction.py failed: {e.stderr or str(e)}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error running prediction.py: {e}",
+        )
+
+    # 2) Read SQLite DB
     try:
         temp, humidity, duration = read_latest_from_sqlite()
     except (FileNotFoundError, ValueError) as e:
@@ -85,15 +102,18 @@ def generate_recommendation_endpoint():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DB error: {e}")
 
+    # 3) Build payload
     payload = {
         "temp": temp,
         "humidity": humidity,
         "duration": duration,
     }
 
+    # 4) Insert into Supabase
     try:
         supabase.table("daily_recommendations").insert(payload).execute()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Supabase insert error: {e}")
 
+    # 5) Return payload to caller (Figma / Make)
     return payload
